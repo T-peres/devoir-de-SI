@@ -117,9 +117,6 @@ function setupEventListeners() {
         UI.updateResteAPayer();
     });
 
-    // Bouton lancer contrôle
-    document.getElementById('runControleBtn').addEventListener('click', runControleFinancier);
-
     // Bouton appliquer filtres
     document.getElementById('applyFiltersBtn').addEventListener('click', applyReportingFilters);
 
@@ -193,46 +190,55 @@ function searchStudents(query) {
     });
 }
 
-// Gestion de la soumission du formulaire échéances
+// Gestion de la soumission du formulaire échéances (tranches globales)
 function handleEcheancesSubmit(e) {
     e.preventDefault();
 
-    const etudiantId = document.getElementById('echeanceStudent').value;
-    const montantTotal = parseFloat(document.getElementById('echeanceMontantTotal').value);
-    const nombreEcheances = parseInt(document.getElementById('echeanceNombre').value);
-    const dateDebut = document.getElementById('echeanceDateDebut').value;
-    const tauxPenalite = parseFloat(document.getElementById('echeancePenalite').value);
+    const form = e.target;
+    const trancheId = form.dataset.trancheId;
+    
+    const nom = document.getElementById('trancheNom').value.trim();
+    const montant = parseFloat(document.getElementById('trancheMontant').value);
+    const dateEcheance = document.getElementById('echeanceDateDebut').value;
+    const tauxPenalite = 5; // Taux fixe de 5%
 
-    if (!etudiantId) {
-        Utils.showToast('Veuillez sélectionner un étudiant', 'error');
+    if (!nom || !montant || !dateEcheance) {
+        Utils.showToast('Veuillez remplir tous les champs obligatoires', 'error');
         return;
     }
 
-    // Calculer le montant par échéance
-    const montantParEcheance = montantTotal / nombreEcheances;
+    if (trancheId) {
+        // Modification
+        const tranche = Storage.getTrancheGlobaleById(trancheId);
+        tranche.nom = nom;
+        tranche.montant = montant;
+        tranche.date_echeance = dateEcheance;
+        tranche.taux_penalite = tauxPenalite;
+        
+        Storage.updateTrancheGlobale(trancheId, tranche);
+        Utils.showToast('Tranche modifiée avec succès', 'success');
+        
+        delete form.dataset.trancheId;
+    } else {
+        // Création
+        const tranches = Storage.getTranchesGlobales();
+        const numero = tranches.length + 1;
+        
+        const tranche = new TrancheGlobale(numero, montant, dateEcheance, tauxPenalite);
+        tranche.nom = nom;
+        
+        Storage.addTrancheGlobale(tranche);
 
-    // Créer les échéances
-    const echeances = [];
-    for (let i = 0; i < nombreEcheances; i++) {
-        const dateEcheance = Utils.addMonths(dateDebut, i);
-        const echeance = new Echeance(etudiantId, montantParEcheance, dateEcheance, tauxPenalite);
-        echeances.push(echeance);
+        // Créer une transaction
+        const transaction = new Transaction(
+            'tranche',
+            `Création de la tranche globale: ${nom}`,
+            montant * Storage.getEtudiants().length
+        );
+        Storage.addTransaction(transaction);
+
+        Utils.showToast('Tranche globale créée avec succès', 'success');
     }
-
-    // Sauvegarder
-    Storage.addMultipleEcheances(echeances);
-
-    // Créer une transaction
-    const etudiant = Storage.getEtudiantById(etudiantId);
-    const transaction = new Transaction(
-        'echeances',
-        `Génération de ${nombreEcheances} échéances - ${etudiant.nom} ${etudiant.prenom}`,
-        montantTotal,
-        etudiantId
-    );
-    Storage.addTransaction(transaction);
-
-    Utils.showToast(`${nombreEcheances} échéances générées avec succès`, 'success');
 
     // Fermer la modale et recharger
     document.getElementById('echeancesModal').classList.remove('active');
@@ -264,11 +270,11 @@ function handlePaymentSubmit(e) {
         return;
     }
 
-    // Récupérer les échéances sélectionnées
+    // Récupérer les échéances/tranches sélectionnées
     const checkboxes = document.querySelectorAll('#echeancesCheckboxes input[type="checkbox"]:checked');
     
     if (checkboxes.length === 0) {
-        Utils.showToast('Veuillez sélectionner au moins une échéance', 'error');
+        Utils.showToast('Veuillez sélectionner au moins une tranche', 'error');
         return;
     }
 
@@ -278,25 +284,24 @@ function handlePaymentSubmit(e) {
         paiement.changerStatut('en_attente');
 
         let montantRestant = montant;
-        const echeancesPayees = [];
+        const tranchesPayees = [];
         const penalitesAppliquees = [];
-        let montantTotalEcheances = 0;
+        let montantTotalTranches = 0;
 
-        // Calculer le montant total des échéances sélectionnées
+        // Calculer le montant total des tranches sélectionnées
         checkboxes.forEach(checkbox => {
-            const echeanceId = checkbox.value;
-            const echeance = Storage.getEcheanceById(echeanceId);
-            if (echeance) {
-                echeance.calculerPenalite();
-                montantTotalEcheances += echeance.getMontantTotal();
+            const trancheId = checkbox.value;
+            const tranche = Storage.getTrancheGlobaleById(trancheId);
+            if (tranche) {
+                montantTotalTranches += tranche.getMontantTotal();
             }
         });
 
         // Vérifier si le montant est suffisant
-        if (montant < montantTotalEcheances) {
+        if (montant < montantTotalTranches) {
             const confirmation = Utils.confirm(
-                `Le montant payé (${Utils.formatMontant(montant)}) est inférieur au total des échéances (${Utils.formatMontant(montantTotalEcheances)}).\n\n` +
-                `Reste à payer: ${Utils.formatMontant(montantTotalEcheances - montant)}\n\n` +
+                `Le montant payé (${Utils.formatMontant(montant)}) est inférieur au total des tranches (${Utils.formatMontant(montantTotalTranches)}).\n\n` +
+                `Reste à payer: ${Utils.formatMontant(montantTotalTranches - montant)}\n\n` +
                 `Voulez-vous continuer avec un paiement partiel ?`
             );
             if (!confirmation) {
@@ -304,46 +309,66 @@ function handlePaymentSubmit(e) {
             }
         }
 
-        // Traiter chaque échéance
+        // Traiter chaque tranche
         checkboxes.forEach(checkbox => {
-            const echeanceId = checkbox.value;
-            const echeance = Storage.getEcheanceById(echeanceId);
+            const trancheId = checkbox.value;
+            const tranche = Storage.getTrancheGlobaleById(trancheId);
             
-            if (echeance && montantRestant > 0) {
-                echeance.calculerPenalite();
-                const montantTotal = echeance.getMontantTotal();
+            if (tranche && montantRestant > 0) {
+                const penalite = tranche.calculerPenalite();
+                const montantTotal = tranche.getMontantTotal();
 
                 if (montantRestant >= montantTotal) {
-                    // Paiement complet de l'échéance
-                    echeance.marquerPayee();
-                    Storage.updateEcheance(echeanceId, echeance);
-                    paiement.ajouterEcheance(echeanceId);
-                    echeancesPayees.push(echeance);
+                    // Paiement complet de la tranche
+                    // Créer ou récupérer le PaiementTranche
+                    let paiementTranche = Storage.getPaiementsTranches().find(
+                        pt => pt.etudiant_id === etudiantId && pt.tranche_id === trancheId
+                    );
+                    
+                    if (!paiementTranche) {
+                        paiementTranche = new PaiementTranche(etudiantId, trancheId);
+                        Storage.addPaiementTranche(paiementTranche);
+                    }
+                    
+                    paiementTranche.marquerPayee(paiement.id_paiement, tranche.montant, penalite);
+                    Storage.updatePaiementTranche(paiementTranche.id_paiement_tranche, paiementTranche);
+                    
+                    paiement.ajouterEcheance(paiementTranche.id_paiement_tranche);
+                    tranchesPayees.push(tranche);
                     montantRestant -= montantTotal;
 
                     // Si pénalité, créer l'enregistrement
-                    if (echeance.montant_penalite > 0) {
-                        const penalite = new Penalite(
+                    if (penalite > 0) {
+                        const penaliteObj = new Penalite(
                             'retard',
-                            echeance.montant_penalite,
-                            `Retard de paiement - Échéance du ${Utils.formatDateShort(echeance.date_echeance)}`,
+                            penalite,
+                            `Retard de paiement - ${tranche.nom}`,
                             etudiantId,
-                            echeanceId
+                            trancheId
                         );
-                        Storage.addPenalite(penalite);
-                        paiement.ajouterPenalite(penalite.id_penalite);
-                        penalitesAppliquees.push(penalite);
+                        Storage.addPenalite(penaliteObj);
+                        paiement.ajouterPenalite(penaliteObj.id_penalite);
+                        penalitesAppliquees.push(penaliteObj);
                     }
                 } else if (montantRestant > 0) {
-                    // Paiement partiel de cette échéance
-                    paiement.ajouterEcheance(echeanceId);
+                    // Paiement partiel de cette tranche
+                    let paiementTranche = Storage.getPaiementsTranches().find(
+                        pt => pt.etudiant_id === etudiantId && pt.tranche_id === trancheId
+                    );
+                    
+                    if (!paiementTranche) {
+                        paiementTranche = new PaiementTranche(etudiantId, trancheId);
+                        Storage.addPaiementTranche(paiementTranche);
+                    }
+                    
+                    paiement.ajouterEcheance(paiementTranche.id_paiement_tranche);
                     montantRestant = 0;
                 }
             }
         });
 
         // Déterminer le statut final
-        if (echeancesPayees.length === checkboxes.length && montantRestant >= 0) {
+        if (tranchesPayees.length === checkboxes.length && montantRestant >= 0) {
             paiement.changerStatut('valide');
         } else {
             paiement.changerStatut('partiel');
@@ -390,7 +415,7 @@ function handlePaymentSubmit(e) {
         // Message de succès détaillé
         let successMessage = 'Paiement enregistré avec succès';
         if (paiement.statut === 'partiel') {
-            successMessage += ` (Paiement partiel - Reste: ${Utils.formatMontant(montantTotalEcheances - montant)})`;
+            successMessage += ` (Paiement partiel - Reste: ${Utils.formatMontant(montantTotalTranches - montant)})`;
         }
         if (penalitesAppliquees.length > 0) {
             const totalPenalites = penalitesAppliquees.reduce((sum, p) => sum + p.montant, 0);
@@ -416,74 +441,6 @@ function handlePaymentSubmit(e) {
         console.error('Erreur lors du traitement du paiement:', error);
         Utils.showToast('Erreur lors de l\'enregistrement du paiement: ' + error.message, 'error');
     }
-}
-
-// Lancer un contrôle financier
-function runControleFinancier() {
-    const controle = new ControleFinancier('coherence');
-
-    // Vérifier la cohérence des paiements
-    const paiements = Storage.getPaiements();
-    const echeances = Storage.getEcheances();
-
-    paiements.forEach(paiement => {
-        // Vérifier que les échéances existent
-        paiement.echeances.forEach(echeanceId => {
-            const echeance = Storage.getEcheanceById(echeanceId);
-            if (!echeance) {
-                controle.ajouterAnomalie(
-                    `Paiement ${paiement.id_paiement}: Échéance ${echeanceId} introuvable`,
-                    'elevee'
-                );
-            }
-        });
-
-        // Vérifier que l'étudiant existe
-        const etudiant = Storage.getEtudiantById(paiement.etudiant_id);
-        if (!etudiant) {
-            controle.ajouterAnomalie(
-                `Paiement ${paiement.id_paiement}: Étudiant ${paiement.etudiant_id} introuvable`,
-                'elevee'
-            );
-        }
-    });
-
-    // Vérifier les échéances en retard sans pénalité
-    echeances.forEach(echeance => {
-        if (!echeance.payee && Utils.isPastDate(echeance.date_echeance)) {
-            echeance.calculerPenalite();
-            if (echeance.penalite_applicable && echeance.montant_penalite === 0) {
-                controle.ajouterAnomalie(
-                    `Échéance ${echeance.id_echeance}: En retard mais pénalité non calculée`,
-                    'moyenne'
-                );
-            }
-        }
-    });
-
-    // Vérifier les paiements sans quittance
-    paiements.forEach(paiement => {
-        const quittances = Storage.getQuittances();
-        const quittance = quittances.find(q => q.paiement_id === paiement.id_paiement);
-        if (!quittance) {
-            controle.ajouterAnomalie(
-                `Paiement ${paiement.id_paiement}: Aucune quittance générée`,
-                'moyenne'
-            );
-        }
-    });
-
-    controle.finaliser();
-    Storage.addControle(controle);
-
-    Utils.showToast(
-        controle.resultat === 'ok' 
-            ? 'Contrôle terminé: Aucune anomalie détectée' 
-            : `Contrôle terminé: ${controle.anomalies.length} anomalie(s) détectée(s)`,
-        controle.resultat === 'ok' ? 'success' : 'warning'
-    );
-
-    UI.loadControle();
 }
 
 // Appliquer les filtres de reporting

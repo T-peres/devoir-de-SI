@@ -2,6 +2,72 @@
  * Modèles de données pour l'application de gestion des paiements universitaires
  */
 
+// Classe Tranche Globale (pour toute l'école)
+class TrancheGlobale {
+    constructor(numero, montant, dateEcheance, tauxPenalite = 5) {
+        this.id_tranche = this.generateId();
+        this.numero = numero; // 1, 2, 3...
+        this.nom = `Tranche ${numero}`;
+        this.montant = montant;
+        this.date_echeance = dateEcheance;
+        this.taux_penalite = tauxPenalite;
+        this.active = true;
+        this.date_creation = new Date().toISOString();
+    }
+
+    generateId() {
+        return 'TRG' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Vérifie si la tranche est en retard
+    isOverdue() {
+        const today = new Date();
+        const echeanceDate = new Date(this.date_echeance);
+        return today > echeanceDate;
+    }
+
+    // Calcule la pénalité
+    calculerPenalite() {
+        if (this.isOverdue()) {
+            return this.montant * (this.taux_penalite / 100);
+        }
+        return 0;
+    }
+
+    // Obtient le montant total avec pénalité
+    getMontantTotal() {
+        return this.montant + this.calculerPenalite();
+    }
+}
+
+// Classe Paiement Tranche (lien entre étudiant et tranche)
+class PaiementTranche {
+    constructor(etudiantId, trancheId) {
+        this.id_paiement_tranche = this.generateId();
+        this.etudiant_id = etudiantId;
+        this.tranche_id = trancheId;
+        this.payee = false;
+        this.date_paiement = null;
+        this.montant_paye = 0;
+        this.penalite_payee = 0;
+        this.paiement_id = null; // Référence au paiement
+        this.date_creation = new Date().toISOString();
+    }
+
+    generateId() {
+        return 'PTR' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Marque la tranche comme payée
+    marquerPayee(paiementId, montantPaye, penalite = 0) {
+        this.payee = true;
+        this.date_paiement = new Date().toISOString();
+        this.paiement_id = paiementId;
+        this.montant_paye = montantPaye;
+        this.penalite_payee = penalite;
+    }
+}
+
 // Classe Étudiant
 class Etudiant {
     constructor(nom, prenom, dateNaissance, email, telephone) {

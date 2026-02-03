@@ -8,6 +8,8 @@ const Storage = {
         ETUDIANTS: 'unipay_etudiants',
         PAIEMENTS: 'unipay_paiements',
         ECHEANCES: 'unipay_echeances',
+        TRANCHES_GLOBALES: 'unipay_tranches_globales',
+        PAIEMENTS_TRANCHES: 'unipay_paiements_tranches',
         QUITTANCES: 'unipay_quittances',
         PENALITES: 'unipay_penalites',
         CONTROLES: 'unipay_controles',
@@ -188,6 +190,91 @@ const Storage = {
         return filtered;
     },
 
+    // === TRANCHES GLOBALES ===
+    getTranchesGlobales() {
+        const data = this.load(this.KEYS.TRANCHES_GLOBALES);
+        return data.map(t => Object.assign(new TrancheGlobale(), t));
+    },
+
+    saveTranchesGlobales(tranches) {
+        return this.save(this.KEYS.TRANCHES_GLOBALES, tranches);
+    },
+
+    addTrancheGlobale(tranche) {
+        const tranches = this.getTranchesGlobales();
+        tranches.push(tranche);
+        return this.saveTranchesGlobales(tranches);
+    },
+
+    getTrancheGlobaleById(id) {
+        const tranches = this.getTranchesGlobales();
+        const tranche = tranches.find(t => t.id_tranche === id);
+        return tranche ? Object.assign(new TrancheGlobale(), tranche) : undefined;
+    },
+
+    updateTrancheGlobale(id, updatedData) {
+        const tranches = this.getTranchesGlobales();
+        const index = tranches.findIndex(t => t.id_tranche === id);
+        if (index !== -1) {
+            tranches[index] = { ...tranches[index], ...updatedData };
+            return this.saveTranchesGlobales(tranches);
+        }
+        return false;
+    },
+
+    deleteTrancheGlobale(id) {
+        const tranches = this.getTranchesGlobales();
+        const filtered = tranches.filter(t => t.id_tranche !== id);
+        return this.saveTranchesGlobales(filtered);
+    },
+
+    // === PAIEMENTS TRANCHES ===
+    getPaiementsTranches() {
+        const data = this.load(this.KEYS.PAIEMENTS_TRANCHES);
+        return data.map(pt => Object.assign(new PaiementTranche(), pt));
+    },
+
+    savePaiementsTranches(paiementsTranches) {
+        return this.save(this.KEYS.PAIEMENTS_TRANCHES, paiementsTranches);
+    },
+
+    addPaiementTranche(paiementTranche) {
+        const paiementsTranches = this.getPaiementsTranches();
+        paiementsTranches.push(paiementTranche);
+        return this.savePaiementsTranches(paiementsTranches);
+    },
+
+    getPaiementTrancheById(id) {
+        const paiementsTranches = this.getPaiementsTranches();
+        const pt = paiementsTranches.find(p => p.id_paiement_tranche === id);
+        return pt ? Object.assign(new PaiementTranche(), pt) : undefined;
+    },
+
+    getPaiementsTranchesByEtudiant(etudiantId) {
+        const paiementsTranches = this.getPaiementsTranches();
+        return paiementsTranches.filter(pt => pt.etudiant_id === etudiantId);
+    },
+
+    getTranchesNonPayeesEtudiant(etudiantId) {
+        const tranches = this.getTranchesGlobales();
+        const paiementsTranches = this.getPaiementsTranchesByEtudiant(etudiantId);
+        
+        return tranches.filter(tranche => {
+            const paiementTranche = paiementsTranches.find(pt => pt.tranche_id === tranche.id_tranche);
+            return !paiementTranche || !paiementTranche.payee;
+        });
+    },
+
+    updatePaiementTranche(id, updatedData) {
+        const paiementsTranches = this.getPaiementsTranches();
+        const index = paiementsTranches.findIndex(pt => pt.id_paiement_tranche === id);
+        if (index !== -1) {
+            paiementsTranches[index] = { ...paiementsTranches[index], ...updatedData };
+            return this.savePaiementsTranches(paiementsTranches);
+        }
+        return false;
+    },
+
     // === QUITTANCES ===
     getQuittances() {
         const data = this.load(this.KEYS.QUITTANCES);
@@ -317,9 +404,28 @@ const Storage = {
             .filter(e => !e.payee)
             .reduce((sum, e) => sum + e.montant, 0);
 
-        // Étudiants en retard (avec échéances dépassées non payées)
+        // Étudiants en retard (avec tranches dépassées non payées)
         const today = new Date();
         const etudiantsEnRetard = new Set();
+        
+        // Vérifier avec les tranches globales
+        const tranches = this.getTranchesGlobales();
+        const paiementsTranches = this.getPaiementsTranches();
+        
+        etudiants.forEach(etudiant => {
+            tranches.forEach(tranche => {
+                if (new Date(tranche.date_echeance) < today) {
+                    const paiementTranche = paiementsTranches.find(
+                        pt => pt.etudiant_id === etudiant.id_etudiant && pt.tranche_id === tranche.id_tranche
+                    );
+                    if (!paiementTranche || !paiementTranche.payee) {
+                        etudiantsEnRetard.add(etudiant.id_etudiant);
+                    }
+                }
+            });
+        });
+
+        // Vérifier aussi avec les anciennes échéances individuelles
         echeances.forEach(e => {
             if (!e.payee && new Date(e.date_echeance) < today) {
                 etudiantsEnRetard.add(e.etudiant_id);

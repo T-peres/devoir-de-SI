@@ -42,7 +42,7 @@ const UI = {
         const titles = {
             dashboard: 'Tableau de bord',
             students: 'Gestion des Étudiants',
-            echeances: 'Gestion des Échéances',
+            echeances: 'Gestion des Tranches',
             payments: 'Gestion des Paiements',
             controle: 'Contrôle Financier',
             reporting: 'Reporting'
@@ -134,29 +134,44 @@ const UI = {
 
     // Charger les échéances
     loadEcheances() {
-        const echeances = Storage.getEcheances();
+        const tranches = Storage.getTranchesGlobales();
         const grid = document.getElementById('echeancesGrid');
         grid.innerHTML = '';
 
-        echeances.forEach(ech => {
-            const etudiant = Storage.getEtudiantById(ech.etudiant_id);
-            const isOverdue = Utils.isPastDate(ech.date_echeance) && !ech.payee;
-            const cardClass = ech.payee ? 'paid' : (isOverdue ? 'overdue' : '');
+        if (tranches.length === 0) {
+            grid.innerHTML = '<p style="padding: 2rem; text-align: center; color: var(--text-secondary);">Aucune tranche définie. Cliquez sur "Créer Tranche Globale" pour commencer.</p>';
+            return;
+        }
+
+        tranches.forEach(tranche => {
+            const isOverdue = Utils.isPastDate(tranche.date_echeance);
+            const penalite = tranche.calculerPenalite();
+            const montantTotal = tranche.getMontantTotal();
+
+            // Compter combien d'étudiants ont payé cette tranche
+            const paiementsTranches = Storage.getPaiementsTranches();
+            const paiementsPayes = paiementsTranches.filter(pt => pt.tranche_id === tranche.id_tranche && pt.payee);
+            const totalEtudiants = Storage.getEtudiants().length;
 
             const card = document.createElement('div');
-            card.className = `echeance-card ${cardClass}`;
+            card.className = `echeance-card ${isOverdue ? 'overdue' : ''}`;
             card.innerHTML = `
                 <div class="echeance-header">
-                    <h4>${etudiant ? etudiant.nom + ' ' + etudiant.prenom : 'Inconnu'}</h4>
-                    <span class="badge ${ech.payee ? 'badge-success' : (isOverdue ? 'badge-danger' : 'badge-warning')}">
-                        ${ech.payee ? 'Payée' : (isOverdue ? 'En retard' : 'En attente')}
+                    <h4>${tranche.nom}</h4>
+                    <span class="badge ${isOverdue ? 'badge-danger' : 'badge-info'}">
+                        ${isOverdue ? 'En retard' : 'Active'}
                     </span>
                 </div>
                 <div class="echeance-body">
-                    <p><strong>Date:</strong> ${Utils.formatDateShort(ech.date_echeance)}</p>
-                    <p><strong>Montant:</strong> ${Utils.formatMontant(ech.montant)}</p>
-                    ${ech.montant_penalite > 0 ? `<p style="color: var(--danger-color);"><strong>Pénalité:</strong> ${Utils.formatMontant(ech.montant_penalite)}</p>` : ''}
-                    ${ech.payee ? `<p><strong>Payée le:</strong> ${Utils.formatDateShort(ech.date_paiement)}</p>` : ''}
+                    <p><strong>Date limite:</strong> ${Utils.formatDateShort(tranche.date_echeance)}</p>
+                    <p><strong>Montant:</strong> ${Utils.formatMontant(tranche.montant)}</p>
+                    ${penalite > 0 ? `<p style="color: var(--danger-color);"><strong>Pénalité:</strong> ${Utils.formatMontant(penalite)}</p>` : ''}
+                    <p><strong>Montant total:</strong> ${Utils.formatMontant(montantTotal)}</p>
+                    <p><strong>Étudiants ayant payé:</strong> ${paiementsPayes.length} / ${totalEtudiants}</p>
+                    <div style="margin-top: 1rem;">
+                        <button class="btn-secondary btn-small" onclick="UI.editTrancheGlobale('${tranche.id_tranche}')">Modifier</button>
+                        <button class="btn-danger btn-small" onclick="UI.deleteTrancheGlobale('${tranche.id_tranche}')">Supprimer</button>
+                    </div>
                 </div>
             `;
             grid.appendChild(card);
@@ -188,20 +203,98 @@ const UI = {
 
     // Charger le contrôle financier
     loadControle() {
-        const controles = Storage.getControles();
-        const tbody = document.querySelector('#controleTable tbody');
-        tbody.innerHTML = '';
+        const etudiants = Storage.getEtudiants();
+        const tranches = Storage.getTranchesGlobales();
+        const paiementsTranches = Storage.getPaiementsTranches();
 
-        controles.forEach(controle => {
-            const row = tbody.insertRow();
-            const resultatBadge = controle.resultat === 'ok' ? 'badge-success' : 'badge-danger';
-            row.innerHTML = `
-                <td>${Utils.formatDateShort(controle.date_controle)}</td>
-                <td>${controle.type_controle}</td>
-                <td><span class="badge ${resultatBadge}">${controle.resultat}</span></td>
-                <td>${controle.anomalies.length} anomalie(s)</td>
-            `;
+        const etudiantsAJour = [];
+        const etudiantsEnRetard = [];
+
+        etudiants.forEach(etudiant => {
+            let tranchesPayees = 0;
+            let tranchesNonPayees = [];
+            let resteAPayer = 0;
+            let totalPenalites = 0;
+
+            tranches.forEach(tranche => {
+                const paiementTranche = paiementsTranches.find(
+                    pt => pt.etudiant_id === etudiant.id_etudiant && pt.tranche_id === tranche.id_tranche && pt.payee
+                );
+
+                if (paiementTranche) {
+                    tranchesPayees++;
+                } else {
+                    tranchesNonPayees.push(tranche);
+                    const montantTranche = tranche.montant;
+                    const penalite = tranche.calculerPenalite();
+                    resteAPayer += montantTranche + penalite;
+                    totalPenalites += penalite;
+                }
+            });
+
+            const etudiantData = {
+                etudiant,
+                tranchesPayees,
+                tranchesNonPayees,
+                resteAPayer,
+                totalPenalites
+            };
+
+            if (tranchesNonPayees.length === 0) {
+                etudiantsAJour.push(etudiantData);
+            } else {
+                etudiantsEnRetard.push(etudiantData);
+            }
         });
+
+        // Mettre à jour les statistiques
+        document.getElementById('etudiantsAJour').textContent = etudiantsAJour.length;
+        document.getElementById('etudiantsEnRetardCount').textContent = etudiantsEnRetard.length;
+        
+        const totalReste = etudiantsEnRetard.reduce((sum, e) => sum + e.resteAPayer, 0);
+        document.getElementById('totalResteAPayer').textContent = Utils.formatMontant(totalReste);
+
+        // Remplir la table des étudiants à jour
+        const tbodyAJour = document.querySelector('#etudiantsAJourTable tbody');
+        tbodyAJour.innerHTML = '';
+
+        if (etudiantsAJour.length === 0) {
+            tbodyAJour.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Aucun étudiant à jour</td></tr>';
+        } else {
+            etudiantsAJour.forEach(data => {
+                const row = tbodyAJour.insertRow();
+                row.innerHTML = `
+                    <td>${data.etudiant.id_etudiant}</td>
+                    <td>${data.etudiant.nom} ${data.etudiant.prenom}</td>
+                    <td>${data.etudiant.email}</td>
+                    <td>${data.etudiant.telephone}</td>
+                    <td><span class="badge badge-success">${data.tranchesPayees} / ${tranches.length}</span></td>
+                `;
+            });
+        }
+
+        // Remplir la table des étudiants en retard
+        const tbodyEnRetard = document.querySelector('#etudiantsEnRetardTable tbody');
+        tbodyEnRetard.innerHTML = '';
+
+        if (etudiantsEnRetard.length === 0) {
+            tbodyEnRetard.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Aucun étudiant en retard</td></tr>';
+        } else {
+            etudiantsEnRetard.forEach(data => {
+                const tranchesNoms = data.tranchesNonPayees.map(t => t.nom).join(', ');
+                const row = tbodyEnRetard.insertRow();
+                row.style.backgroundColor = data.totalPenalites > 0 ? '#fff5f5' : '#fffbeb';
+                row.innerHTML = `
+                    <td>${data.etudiant.id_etudiant}</td>
+                    <td><strong>${data.etudiant.nom} ${data.etudiant.prenom}</strong></td>
+                    <td>${data.etudiant.email}</td>
+                    <td>${data.etudiant.telephone}</td>
+                    <td><span class="badge badge-warning">${tranchesNoms}</span></td>
+                    <td><strong style="color: var(--danger-color);">${Utils.formatMontant(data.resteAPayer)}</strong></td>
+                    <td>${data.totalPenalites > 0 ? '<span style="color: var(--danger-color);">' + Utils.formatMontant(data.totalPenalites) + '</span>' : '-'}</td>
+                `;
+            });
+        }
     },
 
     // Charger le reporting
@@ -313,33 +406,26 @@ const UI = {
         const container = document.getElementById('echeancesCheckboxes');
         container.innerHTML = '';
 
-        const echeances = Storage.getEcheancesNonPayees(etudiantId);
+        // Charger les tranches globales non payées par cet étudiant
+        const tranchesNonPayees = Storage.getTranchesNonPayeesEtudiant(etudiantId);
         
-        if (echeances.length === 0) {
-            container.innerHTML = '<p style="padding: 1rem; color: var(--text-secondary);">Aucune échéance en attente</p>';
+        if (tranchesNonPayees.length === 0) {
+            container.innerHTML = '<p style="padding: 1rem; color: var(--text-secondary);">Aucune tranche en attente</p>';
             return;
         }
 
-        echeances.forEach(ech => {
-            const isOverdue = Utils.isPastDate(ech.date_echeance);
-            
-            // Calculer la pénalité manuellement
-            let montantPenalite = 0;
-            if (isOverdue && !ech.payee) {
-                montantPenalite = ech.montant * (ech.taux_penalite / 100);
-                ech.penalite_applicable = true;
-                ech.montant_penalite = montantPenalite;
-            }
-            
-            const montantTotal = ech.montant + montantPenalite;
+        tranchesNonPayees.forEach(tranche => {
+            const isOverdue = Utils.isPastDate(tranche.date_echeance);
+            const penalite = tranche.calculerPenalite();
+            const montantTotal = tranche.getMontantTotal();
             
             const div = document.createElement('div');
             div.className = 'echeance-checkbox';
             div.innerHTML = `
-                <input type="checkbox" id="ech_${ech.id_echeance}" value="${ech.id_echeance}" data-montant="${montantTotal}">
-                <label for="ech_${ech.id_echeance}">
-                    ${Utils.formatDateShort(ech.date_echeance)} - ${Utils.formatMontant(ech.montant)}
-                    ${montantPenalite > 0 ? `<span style="color: var(--danger-color);"> + ${Utils.formatMontant(montantPenalite)} (pénalité)</span>` : ''}
+                <input type="checkbox" id="tranche_${tranche.id_tranche}" value="${tranche.id_tranche}" data-montant="${montantTotal}" data-type="tranche">
+                <label for="tranche_${tranche.id_tranche}">
+                    ${tranche.nom} - ${Utils.formatDateShort(tranche.date_echeance)} - ${Utils.formatMontant(tranche.montant)}
+                    ${penalite > 0 ? `<span style="color: var(--danger-color);"> + ${Utils.formatMontant(penalite)} (pénalité)</span>` : ''}
                     ${isOverdue ? '<span class="badge badge-danger">En retard</span>' : ''}
                 </label>
             `;
@@ -390,26 +476,47 @@ const UI = {
         }
     },
 
-    // Ouvrir la modale de génération d'échéances
+    // Ouvrir la modale de génération d'échéances (tranches globales)
     openEcheancesModal() {
         const modal = document.getElementById('echeancesModal');
         const form = document.getElementById('echeancesForm');
         form.reset();
+        delete form.dataset.trancheId;
 
-        // Remplir le select des étudiants
-        const select = document.getElementById('echeanceStudent');
-        select.innerHTML = '<option value="">Sélectionner un étudiant</option>';
-        const etudiants = Storage.getEtudiants();
-        etudiants.forEach(e => {
-            select.innerHTML += `<option value="${e.id_etudiant}">${e.nom} ${e.prenom}</option>`;
-        });
-
-        // Date par défaut (mois prochain)
-        const nextMonth = new Date();
-        nextMonth.setMonth(nextMonth.getMonth() + 1);
-        document.getElementById('echeanceDateDebut').value = nextMonth.toISOString().split('T')[0];
+        // Changer le titre
+        document.querySelector('#echeancesModal .modal-header h2').textContent = 'Créer Tranche Globale';
 
         modal.classList.add('active');
+    },
+
+    // Modifier une tranche globale
+    editTrancheGlobale(trancheId) {
+        const tranche = Storage.getTrancheGlobaleById(trancheId);
+        if (!tranche) return;
+
+        const modal = document.getElementById('echeancesModal');
+        const form = document.getElementById('echeancesForm');
+        
+        document.querySelector('#echeancesModal .modal-header h2').textContent = 'Modifier Tranche Globale';
+        
+        // Remplir les champs
+        document.getElementById('trancheNom').value = tranche.nom;
+        document.getElementById('trancheMontant').value = tranche.montant;
+        document.getElementById('echeanceDateDebut').value = tranche.date_echeance;
+        
+        // Stocker l'ID pour la mise à jour
+        form.dataset.trancheId = trancheId;
+        
+        modal.classList.add('active');
+    },
+
+    // Supprimer une tranche globale
+    deleteTrancheGlobale(trancheId) {
+        if (Utils.confirm('Êtes-vous sûr de vouloir supprimer cette tranche ? Cela affectera tous les étudiants.')) {
+            Storage.deleteTrancheGlobale(trancheId);
+            Utils.showToast('Tranche supprimée', 'success');
+            this.loadEcheances();
+        }
     },
 
     // Voir/Imprimer une quittance

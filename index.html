@@ -29,10 +29,6 @@
                 <span class="icon">💰</span>
                 <span>Paiements</span>
             </a>
-            <a href="#" class="nav-item" data-page="quittances">
-                <span class="icon">📄</span>
-                <span>Quittances</span>
-            </a>
             <a href="#" class="nav-item" data-page="controle">
                 <span class="icon">🔍</span>
                 <span>Contrôle Financier</span>
@@ -147,24 +143,6 @@
                                 <th>Montant</th>
                                 <th>Mode</th>
                                 <th>Statut</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Quittances Page -->
-            <div id="quittances-page" class="page">
-                <div class="table-container">
-                    <table id="quittancesTable">
-                        <thead>
-                            <tr>
-                                <th>Référence</th>
-                                <th>Date</th>
-                                <th>Étudiant</th>
-                                <th>Montant</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -339,10 +317,21 @@
     <div id="toastContainer"></div>
 
     <!-- Scripts -->
-    <script src="js/models.js"></script>
-    <script src="js/storage.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/app.js"></script>
+    <script>
+        // Cache busting timestamp
+        const v = Date.now();
+        const scripts = [
+            'js/models.js',
+            'js/storage.js',
+            'js/utils.js',
+            'js/ui.js',
+            'js/app.js'
+        ];
+        scripts.forEach(src => {
+            const script = document.createElement('script');
+            script.src = src + '?v=' + v;
+            document.write(script.outerHTML);
+        });
+    </script>
 </body>
 </html>

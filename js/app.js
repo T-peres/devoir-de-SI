@@ -2,9 +2,19 @@
  * Application principale - Gestion des paiements universitaires
  */
 
+// État de l'application
+const AppState = {
+    isOnline: true,
+    lastSync: null,
+    pendingOperations: []
+};
+
 // Initialisation de l'application
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 Initialisation de UniPay...');
+    
+    // Vérifier l'état de connexion
+    checkOnlineStatus();
     
     // Initialiser l'interface
     UI.init();
@@ -12,8 +22,51 @@ document.addEventListener('DOMContentLoaded', () => {
     // Configurer les événements
     setupEventListeners();
     
+    // Écouter les changements de connexion
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
     console.log('✅ UniPay prêt !');
+    console.log('📡 Mode:', AppState.isOnline ? 'En ligne' : 'Hors ligne');
 });
+
+// Vérifier l'état de connexion
+function checkOnlineStatus() {
+    AppState.isOnline = navigator.onLine;
+    updateOnlineStatus();
+}
+
+// Gérer le passage en ligne
+function handleOnline() {
+    AppState.isOnline = true;
+    updateOnlineStatus();
+    Utils.showToast('✅ Connexion rétablie - Mode en ligne', 'success');
+}
+
+// Gérer le passage hors ligne
+function handleOffline() {
+    AppState.isOnline = false;
+    updateOnlineStatus();
+    Utils.showToast('📡 Mode hors ligne activé - Les données sont sauvegardées localement', 'warning');
+}
+
+// Mettre à jour l'indicateur de statut
+function updateOnlineStatus() {
+    const statusIndicator = document.getElementById('currentDate');
+    if (statusIndicator) {
+        const now = new Date();
+        const dateText = now.toLocaleDateString('fr-FR', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        
+        const statusIcon = AppState.isOnline ? '🟢' : '🔴';
+        const statusText = AppState.isOnline ? 'En ligne' : 'Hors ligne';
+        statusIndicator.innerHTML = `${dateText} <span style="margin-left: 1rem;">${statusIcon} ${statusText}</span>`;
+    }
+}
 
 // Configuration des écouteurs d'événements
 function setupEventListeners() {
@@ -195,13 +248,19 @@ function handlePaymentSubmit(e) {
     const montant = parseFloat(document.getElementById('paymentMontant').value);
     const modePaiement = document.getElementById('paymentMode').value;
 
+    // Validation des données
     if (!etudiantId) {
         Utils.showToast('Veuillez sélectionner un étudiant', 'error');
         return;
     }
 
-    if (montant <= 0) {
+    if (!montant || montant <= 0 || isNaN(montant)) {
         Utils.showToast('Montant invalide', 'error');
+        return;
+    }
+
+    if (!modePaiement) {
+        Utils.showToast('Veuillez sélectionner un mode de paiement', 'error');
         return;
     }
 
@@ -213,94 +272,149 @@ function handlePaymentSubmit(e) {
         return;
     }
 
-    // Créer le paiement
-    const paiement = new Paiement(etudiantId, montant, modePaiement);
-    paiement.changerStatut('valide');
+    try {
+        // Créer le paiement
+        const paiement = new Paiement(etudiantId, montant, modePaiement);
+        paiement.changerStatut('en_attente');
 
-    let montantRestant = montant;
-    const echeancesPayees = [];
-    const penalitesAppliquees = [];
+        let montantRestant = montant;
+        const echeancesPayees = [];
+        const penalitesAppliquees = [];
+        let montantTotalEcheances = 0;
 
-    // Traiter chaque échéance
-    checkboxes.forEach(checkbox => {
-        const echeanceId = checkbox.value;
-        const echeance = Storage.getEcheanceById(echeanceId);
-        
-        if (echeance && montantRestant > 0) {
-            echeance.calculerPenalite();
-            const montantTotal = echeance.getMontantTotal();
+        // Calculer le montant total des échéances sélectionnées
+        checkboxes.forEach(checkbox => {
+            const echeanceId = checkbox.value;
+            const echeance = Storage.getEcheanceById(echeanceId);
+            if (echeance) {
+                echeance.calculerPenalite();
+                montantTotalEcheances += echeance.getMontantTotal();
+            }
+        });
 
-            if (montantRestant >= montantTotal) {
-                // Paiement complet de l'échéance
-                echeance.marquerPayee();
-                Storage.updateEcheance(echeanceId, echeance);
-                paiement.ajouterEcheance(echeanceId);
-                echeancesPayees.push(echeance);
-                montantRestant -= montantTotal;
-
-                // Si pénalité, créer l'enregistrement
-                if (echeance.montant_penalite > 0) {
-                    const etudiant = Storage.getEtudiantById(etudiantId);
-                    const penalite = new Penalite(
-                        'retard',
-                        echeance.montant_penalite,
-                        `Retard de paiement - Échéance du ${Utils.formatDateShort(echeance.date_echeance)}`,
-                        etudiantId,
-                        echeanceId
-                    );
-                    Storage.addPenalite(penalite);
-                    paiement.ajouterPenalite(penalite.id_penalite);
-                    penalitesAppliquees.push(penalite);
-                }
+        // Vérifier si le montant est suffisant
+        if (montant < montantTotalEcheances) {
+            const confirmation = Utils.confirm(
+                `Le montant payé (${Utils.formatMontant(montant)}) est inférieur au total des échéances (${Utils.formatMontant(montantTotalEcheances)}).\n\n` +
+                `Reste à payer: ${Utils.formatMontant(montantTotalEcheances - montant)}\n\n` +
+                `Voulez-vous continuer avec un paiement partiel ?`
+            );
+            if (!confirmation) {
+                return;
             }
         }
-    });
 
-    // Déterminer le statut final
-    if (montantRestant > 0) {
-        paiement.changerStatut('partiel');
-    }
+        // Traiter chaque échéance
+        checkboxes.forEach(checkbox => {
+            const echeanceId = checkbox.value;
+            const echeance = Storage.getEcheanceById(echeanceId);
+            
+            if (echeance && montantRestant > 0) {
+                echeance.calculerPenalite();
+                const montantTotal = echeance.getMontantTotal();
 
-    // Sauvegarder le paiement
-    Storage.addPaiement(paiement);
+                if (montantRestant >= montantTotal) {
+                    // Paiement complet de l'échéance
+                    echeance.marquerPayee();
+                    Storage.updateEcheance(echeanceId, echeance);
+                    paiement.ajouterEcheance(echeanceId);
+                    echeancesPayees.push(echeance);
+                    montantRestant -= montantTotal;
 
-    // Créer la quittance
-    const quittance = new Quittance(paiement.id_paiement, etudiantId, montant);
-    Storage.addQuittance(quittance);
-    paiement.quittance_id = quittance.id_quittance;
+                    // Si pénalité, créer l'enregistrement
+                    if (echeance.montant_penalite > 0) {
+                        const penalite = new Penalite(
+                            'retard',
+                            echeance.montant_penalite,
+                            `Retard de paiement - Échéance du ${Utils.formatDateShort(echeance.date_echeance)}`,
+                            etudiantId,
+                            echeanceId
+                        );
+                        Storage.addPenalite(penalite);
+                        paiement.ajouterPenalite(penalite.id_penalite);
+                        penalitesAppliquees.push(penalite);
+                    }
+                } else if (montantRestant > 0) {
+                    // Paiement partiel de cette échéance
+                    paiement.ajouterEcheance(echeanceId);
+                    montantRestant = 0;
+                }
+            }
+        });
 
-    // Créer les transactions
-    const etudiant = Storage.getEtudiantById(etudiantId);
-    
-    const transactionPaiement = new Transaction(
-        'paiement',
-        `Paiement ${modePaiement} - ${etudiant.nom} ${etudiant.prenom}`,
-        montant,
-        etudiantId
-    );
-    Storage.addTransaction(transactionPaiement);
+        // Déterminer le statut final
+        if (echeancesPayees.length === checkboxes.length && montantRestant >= 0) {
+            paiement.changerStatut('valide');
+        } else {
+            paiement.changerStatut('partiel');
+        }
 
-    penalitesAppliquees.forEach(pen => {
-        const transactionPenalite = new Transaction(
-            'penalite',
-            `Pénalité de retard - ${etudiant.nom} ${etudiant.prenom}`,
-            pen.montant,
+        // Sauvegarder le paiement
+        const paiementSaved = Storage.addPaiement(paiement);
+        if (!paiementSaved) {
+            throw new Error('Erreur lors de la sauvegarde du paiement');
+        }
+
+        // Créer la quittance
+        const quittance = new Quittance(paiement.id_paiement, etudiantId, montant);
+        const quittanceSaved = Storage.addQuittance(quittance);
+        if (!quittanceSaved) {
+            throw new Error('Erreur lors de la création de la quittance');
+        }
+        
+        paiement.quittance_id = quittance.id_quittance;
+        Storage.updatePaiement(paiement.id_paiement, paiement);
+
+        // Créer les transactions
+        const etudiant = Storage.getEtudiantById(etudiantId);
+        
+        const transactionPaiement = new Transaction(
+            'paiement',
+            `Paiement ${modePaiement} - ${etudiant.nom} ${etudiant.prenom}`,
+            montant,
             etudiantId
         );
-        Storage.addTransaction(transactionPenalite);
-    });
+        Storage.addTransaction(transactionPaiement);
 
-    Utils.showToast('Paiement enregistré avec succès', 'success');
+        // Transactions pour les pénalités
+        penalitesAppliquees.forEach(pen => {
+            const transactionPenalite = new Transaction(
+                'penalite',
+                `Pénalité de retard - ${etudiant.nom} ${etudiant.prenom}`,
+                pen.montant,
+                etudiantId
+            );
+            Storage.addTransaction(transactionPenalite);
+        });
 
-    // Fermer la modale et recharger
-    document.getElementById('paymentModal').classList.remove('active');
-    UI.loadPayments();
-    UI.loadEcheances();
-    UI.loadDashboard();
+        // Message de succès détaillé
+        let successMessage = 'Paiement enregistré avec succès';
+        if (paiement.statut === 'partiel') {
+            successMessage += ` (Paiement partiel - Reste: ${Utils.formatMontant(montantTotalEcheances - montant)})`;
+        }
+        if (penalitesAppliquees.length > 0) {
+            const totalPenalites = penalitesAppliquees.reduce((sum, p) => sum + p.montant, 0);
+            successMessage += ` - Pénalités: ${Utils.formatMontant(totalPenalites)}`;
+        }
+        
+        Utils.showToast(successMessage, 'success');
 
-    // Proposer d'imprimer la quittance
-    if (Utils.confirm('Voulez-vous imprimer la quittance ?')) {
-        UI.printQuittance(quittance.id_quittance);
+        // Fermer la modale et recharger
+        document.getElementById('paymentModal').classList.remove('active');
+        UI.loadPayments();
+        UI.loadEcheances();
+        UI.loadDashboard();
+
+        // Proposer d'imprimer la quittance
+        setTimeout(() => {
+            if (Utils.confirm('Voulez-vous imprimer la quittance maintenant ?')) {
+                UI.printQuittance(quittance.id_quittance);
+            }
+        }, 500);
+
+    } catch (error) {
+        console.error('Erreur lors du traitement du paiement:', error);
+        Utils.showToast('Erreur lors de l\'enregistrement du paiement: ' + error.message, 'error');
     }
 }
 

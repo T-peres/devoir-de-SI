@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nettoyage Cache - UniPay</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        .success {
+            background: #10b981;
+            padding: 15px;
+            border-radius: 5px;
+            color: white;
+            margin-top: 20px;
+            display: none;
+        }
+        .info {
+            color: #666;
+            margin: 20px 0;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Nettoyage du Cache</h1>
+        <div class="info">
+            <p>Cette page va nettoyer le cache et les données locales de l'application UniPay.</p>
+            <p><strong>Attention:</strong> Toutes les données seront supprimées.</p>
+        </div>
+        <button onclick="clearAll()">Nettoyer et Redémarrer</button>
+        <div class="success" id="success">
+            ✅ Cache nettoyé avec succès!<br>
+            Redirection dans 2 secondes...
+        </div>
+    </div>
+
+    <script>
+        function clearAll() {
+            // Nettoyer localStorage
+            localStorage.clear();
+            
+            // Nettoyer sessionStorage
+            sessionStorage.clear();
+            
+            // Afficher le message de succès
+            document.getElementById('success').style.display = 'block';
+            
+            // Rediriger vers l'application
+            setTimeout(() => {
+                window.location.href = 'index.html?t=' + Date.now();
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

@@ -44,7 +44,6 @@ const UI = {
             students: 'Gestion des Étudiants',
             echeances: 'Gestion des Échéances',
             payments: 'Gestion des Paiements',
-            quittances: 'Quittances',
             controle: 'Contrôle Financier',
             reporting: 'Reporting'
         };
@@ -68,9 +67,6 @@ const UI = {
                 break;
             case 'payments':
                 this.loadPayments();
-                break;
-            case 'quittances':
-                this.loadQuittances();
                 break;
             case 'controle':
                 this.loadControle();
@@ -181,31 +177,10 @@ const UI = {
                 <td>${Utils.formatDateShort(paiement.date_paiement)}</td>
                 <td>${etudiant ? etudiant.nom + ' ' + etudiant.prenom : 'Inconnu'}</td>
                 <td>${Utils.formatMontant(paiement.montant)}</td>
-                <td>${paiement.mode_paiement}</td>
-                <td><span class="badge badge-success">${paiement.statut}</span></td>
+                <td><span style="text-transform: capitalize;">${paiement.mode_paiement}</span></td>
+                <td><span class="badge ${paiement.statut === 'valide' ? 'badge-success' : (paiement.statut === 'partiel' ? 'badge-warning' : 'badge-info')}">${paiement.statut}</span></td>
                 <td>
-                    <button class="btn-primary btn-small" onclick="UI.viewQuittance('${paiement.id_paiement}')">Quittance</button>
-                </td>
-            `;
-        });
-    },
-
-    // Charger les quittances
-    loadQuittances() {
-        const quittances = Storage.getQuittances();
-        const tbody = document.querySelector('#quittancesTable tbody');
-        tbody.innerHTML = '';
-
-        quittances.forEach(quittance => {
-            const etudiant = Storage.getEtudiantById(quittance.etudiant_id);
-            const row = tbody.insertRow();
-            row.innerHTML = `
-                <td>${quittance.reference}</td>
-                <td>${Utils.formatDateShort(quittance.date_emission)}</td>
-                <td>${etudiant ? etudiant.nom + ' ' + etudiant.prenom : 'Inconnu'}</td>
-                <td>${Utils.formatMontant(quittance.montant)}</td>
-                <td>
-                    <button class="btn-primary btn-small" onclick="UI.printQuittance('${quittance.id_quittance}')">Imprimer</button>
+                    <button class="btn-primary btn-small" onclick="UI.viewQuittance('${paiement.id_paiement}')" title="Voir la quittance">📄 Quittance</button>
                 </td>
             `;
         });
@@ -347,15 +322,24 @@ const UI = {
 
         echeances.forEach(ech => {
             const isOverdue = Utils.isPastDate(ech.date_echeance);
-            ech.calculerPenalite();
+            
+            // Calculer la pénalité manuellement
+            let montantPenalite = 0;
+            if (isOverdue && !ech.payee) {
+                montantPenalite = ech.montant * (ech.taux_penalite / 100);
+                ech.penalite_applicable = true;
+                ech.montant_penalite = montantPenalite;
+            }
+            
+            const montantTotal = ech.montant + montantPenalite;
             
             const div = document.createElement('div');
             div.className = 'echeance-checkbox';
             div.innerHTML = `
-                <input type="checkbox" id="ech_${ech.id_echeance}" value="${ech.id_echeance}" data-montant="${ech.getMontantTotal()}">
+                <input type="checkbox" id="ech_${ech.id_echeance}" value="${ech.id_echeance}" data-montant="${montantTotal}">
                 <label for="ech_${ech.id_echeance}">
                     ${Utils.formatDateShort(ech.date_echeance)} - ${Utils.formatMontant(ech.montant)}
-                    ${ech.montant_penalite > 0 ? `<span style="color: var(--danger-color);"> + ${Utils.formatMontant(ech.montant_penalite)} (pénalité)</span>` : ''}
+                    ${montantPenalite > 0 ? `<span style="color: var(--danger-color);"> + ${Utils.formatMontant(montantPenalite)} (pénalité)</span>` : ''}
                     ${isOverdue ? '<span class="badge badge-danger">En retard</span>' : ''}
                 </label>
             `;
@@ -379,7 +363,31 @@ const UI = {
         });
 
         const reste = totalEcheances - montantPaye;
-        document.getElementById('resteAPayer').textContent = Utils.formatMontant(Math.max(0, reste));
+        const resteElement = document.getElementById('resteAPayer');
+        resteElement.textContent = Utils.formatMontant(Math.max(0, reste));
+        
+        // Changer la couleur selon le statut
+        if (reste > 0) {
+            resteElement.style.color = 'var(--danger-color)';
+        } else if (reste < 0) {
+            resteElement.style.color = 'var(--warning-color)';
+        } else {
+            resteElement.style.color = 'var(--secondary-color)';
+        }
+        
+        // Afficher un message si trop payé
+        const messageDiv = document.getElementById('paymentMessage');
+        if (messageDiv) {
+            messageDiv.remove();
+        }
+        
+        if (reste < 0) {
+            const msg = document.createElement('div');
+            msg.id = 'paymentMessage';
+            msg.style.cssText = 'padding: 0.5rem; margin-top: 0.5rem; background: var(--warning-color); color: white; border-radius: 0.5rem; font-size: 0.875rem;';
+            msg.textContent = `⚠️ Montant supérieur au total des échéances (surplus: ${Utils.formatMontant(Math.abs(reste))})`;
+            document.getElementById('resteAPayer').parentElement.appendChild(msg);
+        }
     },
 
     // Ouvrir la modale de génération d'échéances
@@ -421,18 +429,45 @@ const UI = {
     // Imprimer une quittance
     printQuittance(quittanceId) {
         const quittance = Storage.getQuittanceById(quittanceId);
+        if (!quittance) {
+            Utils.showToast('Quittance non trouvée', 'error');
+            return;
+        }
+
         const etudiant = Storage.getEtudiantById(quittance.etudiant_id);
+        if (!etudiant) {
+            Utils.showToast('Étudiant non trouvé', 'error');
+            return;
+        }
+
         const paiement = Storage.getPaiementById(quittance.paiement_id);
+        if (!paiement) {
+            Utils.showToast('Paiement non trouvé', 'error');
+            return;
+        }
 
         // Récupérer les échéances payées
-        const echeances = paiement.echeances.map(id => Storage.getEcheanceById(id));
+        const echeances = paiement.echeances.map(id => Storage.getEcheanceById(id)).filter(e => e !== undefined);
 
-        const html = quittance.genererHTML(etudiant, echeances);
+        if (echeances.length === 0) {
+            Utils.showToast('Aucune échéance trouvée pour ce paiement', 'warning');
+        }
+
+        // Générer le HTML avec toutes les informations
+        const html = Utils.genererQuittanceHTML(quittance, etudiant, echeances, paiement);
 
         // Ouvrir dans une nouvelle fenêtre
-        const printWindow = window.open('', '_blank');
+        const printWindow = window.open('', '_blank', 'width=900,height=700');
+        if (!printWindow) {
+            Utils.showToast('Veuillez autoriser les popups pour imprimer la quittance', 'error');
+            return;
+        }
+
         printWindow.document.write(html);
         printWindow.document.close();
+        
+        // Focus sur la nouvelle fenêtre
+        printWindow.focus();
     },
 
     // Configuration du mode sombre

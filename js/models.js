@@ -139,92 +139,368 @@ class Quittance {
     }
 
     // Génère le HTML de la quittance pour impression
-    genererHTML(etudiant, echeances) {
+    genererHTML(etudiant, echeances, paiement) {
         const dateFormatted = new Date(this.date_emission).toLocaleDateString('fr-FR', {
             year: 'numeric',
             month: 'long',
-            day: 'numeric'
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
         });
 
+        const dateSimple = new Date(this.date_emission).toLocaleDateString('fr-FR');
+
         let echeancesHTML = '';
+        let totalMontant = 0;
+        let totalPenalite = 0;
+
         echeances.forEach(ech => {
             const dateEch = new Date(ech.date_echeance).toLocaleDateString('fr-FR');
+            totalMontant += ech.montant;
+            totalPenalite += ech.montant_penalite || 0;
+            
             echeancesHTML += `
                 <tr>
                     <td>${dateEch}</td>
-                    <td>${ech.montant.toLocaleString('fr-FR')} FCFA</td>
-                    <td>${ech.montant_penalite > 0 ? ech.montant_penalite.toLocaleString('fr-FR') + ' FCFA' : '-'}</td>
+                    <td style="text-align: right;">${ech.montant.toLocaleString('fr-FR')} FCFA</td>
+                    <td style="text-align: right;">${ech.montant_penalite > 0 ? ech.montant_penalite.toLocaleString('fr-FR') + ' FCFA' : '-'}</td>
+                    <td style="text-align: right;">${(ech.montant + (ech.montant_penalite || 0)).toLocaleString('fr-FR')} FCFA</td>
                 </tr>
             `;
         });
+
+        // Ligne de total
+        echeancesHTML += `
+            <tr style="background-color: #f3f4f6; font-weight: bold;">
+                <td>TOTAL</td>
+                <td style="text-align: right;">${totalMontant.toLocaleString('fr-FR')} FCFA</td>
+                <td style="text-align: right;">${totalPenalite > 0 ? totalPenalite.toLocaleString('fr-FR') + ' FCFA' : '-'}</td>
+                <td style="text-align: right;">${(totalMontant + totalPenalite).toLocaleString('fr-FR')} FCFA</td>
+            </tr>
+        `;
 
         return `
             <!DOCTYPE html>
             <html lang="fr">
             <head>
                 <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Quittance ${this.reference}</title>
                 <style>
-                    body { font-family: Arial, sans-serif; padding: 40px; }
-                    .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #333; padding-bottom: 20px; }
-                    .info { margin: 20px 0; }
-                    .info-row { display: flex; justify-content: space-between; margin: 10px 0; }
-                    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                    th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-                    th { background-color: #4f46e5; color: white; }
-                    .total { font-size: 1.2em; font-weight: bold; text-align: right; margin-top: 20px; }
-                    .footer { margin-top: 60px; text-align: center; font-size: 0.9em; color: #666; }
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { 
+                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                        padding: 40px; 
+                        background: #f9fafb;
+                        color: #111827;
+                    }
+                    .container {
+                        max-width: 800px;
+                        margin: 0 auto;
+                        background: white;
+                        padding: 40px;
+                        border-radius: 10px;
+                        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    }
+                    .header { 
+                        text-align: center; 
+                        margin-bottom: 40px; 
+                        border-bottom: 3px solid #4f46e5; 
+                        padding-bottom: 20px; 
+                    }
+                    .header h1 {
+                        color: #4f46e5;
+                        font-size: 2em;
+                        margin-bottom: 10px;
+                    }
+                    .reference {
+                        font-size: 1.2em;
+                        color: #6b7280;
+                        margin-top: 10px;
+                    }
+                    .reference strong {
+                        color: #111827;
+                    }
+                    .info { 
+                        margin: 30px 0; 
+                        padding: 20px;
+                        background: #f9fafb;
+                        border-radius: 8px;
+                    }
+                    .info-row { 
+                        display: flex; 
+                        justify-content: space-between; 
+                        margin: 12px 0;
+                        padding: 8px 0;
+                        border-bottom: 1px solid #e5e7eb;
+                    }
+                    .info-row:last-child {
+                        border-bottom: none;
+                    }
+                    .info-label {
+                        font-weight: 600;
+                        color: #6b7280;
+                        min-width: 120px;
+                    }
+                    .info-value {
+                        color: #111827;
+                        font-weight: 500;
+                    }
+                    .section-title {
+                        font-size: 1.3em;
+                        color: #111827;
+                        margin: 30px 0 15px 0;
+                        padding-bottom: 10px;
+                        border-bottom: 2px solid #e5e7eb;
+                    }
+                    table { 
+                        width: 100%; 
+                        border-collapse: collapse; 
+                        margin: 20px 0; 
+                    }
+                    th, td { 
+                        border: 1px solid #e5e7eb; 
+                        padding: 12px; 
+                        text-align: left; 
+                    }
+                    th { 
+                        background-color: #4f46e5; 
+                        color: white; 
+                        font-weight: 600;
+                        text-transform: uppercase;
+                        font-size: 0.85em;
+                        letter-spacing: 0.5px;
+                    }
+                    tbody tr:nth-child(even) {
+                        background-color: #f9fafb;
+                    }
+                    tbody tr:hover {
+                        background-color: #f3f4f6;
+                    }
+                    .payment-info {
+                        margin: 30px 0;
+                        padding: 20px;
+                        background: #eff6ff;
+                        border-left: 4px solid #3b82f6;
+                        border-radius: 4px;
+                    }
+                    .payment-info p {
+                        margin: 8px 0;
+                        color: #1e40af;
+                    }
+                    .total-box { 
+                        margin: 30px 0;
+                        padding: 25px;
+                        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+                        color: white;
+                        border-radius: 10px;
+                        text-align: center;
+                    }
+                    .total-label {
+                        font-size: 1em;
+                        margin-bottom: 10px;
+                        opacity: 0.9;
+                    }
+                    .total-amount {
+                        font-size: 2.5em;
+                        font-weight: bold;
+                        letter-spacing: 1px;
+                    }
+                    .footer { 
+                        margin-top: 60px; 
+                        padding-top: 30px;
+                        border-top: 2px solid #e5e7eb;
+                        text-align: center; 
+                        font-size: 0.9em; 
+                        color: #6b7280; 
+                    }
+                    .footer p {
+                        margin: 10px 0;
+                    }
+                    .signature-section {
+                        margin-top: 60px;
+                        display: flex;
+                        justify-content: space-between;
+                    }
+                    .signature-box {
+                        width: 45%;
+                        text-align: center;
+                    }
+                    .signature-line {
+                        border-top: 2px solid #111827;
+                        margin-top: 60px;
+                        padding-top: 10px;
+                        font-weight: 600;
+                    }
+                    .buttons {
+                        text-align: center;
+                        margin: 30px 0;
+                        display: flex;
+                        gap: 15px;
+                        justify-content: center;
+                    }
+                    button {
+                        padding: 12px 30px;
+                        border: none;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-size: 16px;
+                        font-weight: 600;
+                        transition: all 0.3s;
+                    }
+                    .btn-print {
+                        background: #4f46e5;
+                        color: white;
+                    }
+                    .btn-print:hover {
+                        background: #4338ca;
+                        transform: translateY(-2px);
+                        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+                    }
+                    .btn-close {
+                        background: #6b7280;
+                        color: white;
+                    }
+                    .btn-close:hover {
+                        background: #4b5563;
+                    }
+                    .watermark {
+                        position: fixed;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%) rotate(-45deg);
+                        font-size: 8em;
+                        color: rgba(79, 70, 229, 0.03);
+                        font-weight: bold;
+                        z-index: -1;
+                        pointer-events: none;
+                    }
                     @media print {
-                        body { padding: 20px; }
+                        body { 
+                            padding: 0; 
+                            background: white;
+                        }
+                        .container {
+                            box-shadow: none;
+                            padding: 20px;
+                        }
                         button { display: none; }
+                        .buttons { display: none; }
+                        .watermark { display: none; }
+                    }
+                    @media (max-width: 768px) {
+                        body { padding: 20px; }
+                        .container { padding: 20px; }
+                        .info-row { flex-direction: column; }
+                        .signature-section { flex-direction: column; }
+                        .signature-box { width: 100%; margin: 20px 0; }
                     }
                 </style>
             </head>
             <body>
-                <div class="header">
-                    <h1>💳 QUITTANCE DE PAIEMENT</h1>
-                    <p>Référence: <strong>${this.reference}</strong></p>
-                </div>
-                
-                <div class="info">
-                    <div class="info-row">
-                        <div><strong>Étudiant:</strong> ${etudiant.getNomComplet()}</div>
-                        <div><strong>Date:</strong> ${dateFormatted}</div>
+                <div class="watermark">PAYÉ</div>
+                <div class="container">
+                    <div class="header">
+                        <h1>💳 QUITTANCE DE PAIEMENT</h1>
+                        <p class="reference">Référence: <strong>${this.reference}</strong></p>
+                        <p style="color: #6b7280; margin-top: 5px; font-size: 0.9em;">Université - Service de Scolarité</p>
                     </div>
-                    <div class="info-row">
-                        <div><strong>Email:</strong> ${etudiant.email}</div>
-                        <div><strong>Téléphone:</strong> ${etudiant.telephone}</div>
+                    
+                    <div class="info">
+                        <div class="info-row">
+                            <span class="info-label">Étudiant :</span>
+                            <span class="info-value">${etudiant.getNomComplet()}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">ID Étudiant :</span>
+                            <span class="info-value">${etudiant.id_etudiant}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Email :</span>
+                            <span class="info-value">${etudiant.email}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Téléphone :</span>
+                            <span class="info-value">${etudiant.telephone}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Date d'émission :</span>
+                            <span class="info-value">${dateFormatted}</span>
+                        </div>
+                    </div>
+
+                    ${paiement ? `
+                    <div class="payment-info">
+                        <p><strong>Mode de paiement :</strong> ${paiement.mode_paiement.toUpperCase()}</p>
+                        <p><strong>Statut :</strong> ${paiement.statut.toUpperCase()}</p>
+                        <p><strong>ID Paiement :</strong> ${paiement.id_paiement}</p>
+                    </div>
+                    ` : ''}
+
+                    <h3 class="section-title">Détail des échéances payées</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date Échéance</th>
+                                <th style="text-align: right;">Montant</th>
+                                <th style="text-align: right;">Pénalité</th>
+                                <th style="text-align: right;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${echeancesHTML}
+                        </tbody>
+                    </table>
+
+                    <div class="total-box">
+                        <div class="total-label">MONTANT TOTAL PAYÉ</div>
+                        <div class="total-amount">${this.montant.toLocaleString('fr-FR')} FCFA</div>
+                    </div>
+
+                    <div class="signature-section">
+                        <div class="signature-box">
+                            <p>Signature de l'étudiant</p>
+                            <div class="signature-line">L'étudiant</div>
+                        </div>
+                        <div class="signature-box">
+                            <p>Signature du caissier</p>
+                            <div class="signature-line">Le caissier</div>
+                        </div>
+                    </div>
+
+                    <div class="footer">
+                        <p><strong>Cette quittance certifie le paiement des sommes mentionnées ci-dessus.</strong></p>
+                        <p>Document officiel généré le ${dateSimple}</p>
+                        <p style="margin-top: 20px; font-size: 0.85em;">
+                            En cas de litige, veuillez contacter le service de scolarité avec cette référence : <strong>${this.reference}</strong>
+                        </p>
+                    </div>
+
+                    <div class="buttons">
+                        <button class="btn-print" onclick="window.print()">
+                            🖨️ Imprimer / Télécharger PDF
+                        </button>
+                        <button class="btn-close" onclick="window.close()">
+                            ✖️ Fermer
+                        </button>
                     </div>
                 </div>
 
-                <h3>Détail des échéances payées</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date Échéance</th>
-                            <th>Montant</th>
-                            <th>Pénalité</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${echeancesHTML}
-                    </tbody>
-                </table>
+                <script>
+                    // Auto-focus pour impression rapide
+                    window.addEventListener('load', function() {
+                        // Optionnel : décommenter pour impression automatique
+                        // setTimeout(() => window.print(), 500);
+                    });
 
-                <div class="total">
-                    MONTANT TOTAL PAYÉ: ${this.montant.toLocaleString('fr-FR')} FCFA
-                </div>
-
-                <div class="footer">
-                    <p>Cette quittance certifie le paiement des sommes mentionnées ci-dessus.</p>
-                    <p>Document généré le ${dateFormatted}</p>
-                </div>
-
-                <div style="text-align: center; margin-top: 30px;">
-                    <button onclick="window.print()" style="padding: 10px 30px; background: #4f46e5; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
-                        Imprimer / Télécharger PDF
-                    </button>
-                </div>
+                    // Raccourci clavier Ctrl+P
+                    document.addEventListener('keydown', function(e) {
+                        if (e.ctrlKey && e.key === 'p') {
+                            e.preventDefault();
+                            window.print();
+                        }
+                    });
+                </script>
             </body>
             </html>
         `;

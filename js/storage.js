@@ -63,7 +63,8 @@ const Storage = {
 
     // === ÉTUDIANTS ===
     getEtudiants() {
-        return this.load(this.KEYS.ETUDIANTS);
+        const data = this.load(this.KEYS.ETUDIANTS);
+        return data.map(e => Object.assign(new Etudiant(), e));
     },
 
     saveEtudiants(etudiants) {
@@ -94,12 +95,14 @@ const Storage = {
 
     getEtudiantById(id) {
         const etudiants = this.getEtudiants();
-        return etudiants.find(e => e.id_etudiant === id);
+        const etudiant = etudiants.find(e => e.id_etudiant === id);
+        return etudiant ? Object.assign(new Etudiant(), etudiant) : undefined;
     },
 
     // === PAIEMENTS ===
     getPaiements() {
-        return this.load(this.KEYS.PAIEMENTS);
+        const data = this.load(this.KEYS.PAIEMENTS);
+        return data.map(p => Object.assign(new Paiement(), p));
     },
 
     savePaiements(paiements) {
@@ -114,7 +117,18 @@ const Storage = {
 
     getPaiementById(id) {
         const paiements = this.getPaiements();
-        return paiements.find(p => p.id_paiement === id);
+        const paiement = paiements.find(p => p.id_paiement === id);
+        return paiement ? Object.assign(new Paiement(), paiement) : undefined;
+    },
+
+    updatePaiement(id, updatedData) {
+        const paiements = this.getPaiements();
+        const index = paiements.findIndex(p => p.id_paiement === id);
+        if (index !== -1) {
+            paiements[index] = { ...paiements[index], ...updatedData };
+            return this.savePaiements(paiements);
+        }
+        return false;
     },
 
     getPaiementsByEtudiant(etudiantId) {
@@ -124,7 +138,8 @@ const Storage = {
 
     // === ÉCHÉANCES ===
     getEcheances() {
-        return this.load(this.KEYS.ECHEANCES);
+        const data = this.load(this.KEYS.ECHEANCES);
+        return data.map(e => Object.assign(new Echeance(), e));
     },
 
     saveEcheances(echeances) {
@@ -155,7 +170,8 @@ const Storage = {
 
     getEcheanceById(id) {
         const echeances = this.getEcheances();
-        return echeances.find(e => e.id_echeance === id);
+        const echeance = echeances.find(e => e.id_echeance === id);
+        return echeance ? Object.assign(new Echeance(), echeance) : undefined;
     },
 
     getEcheancesByEtudiant(etudiantId) {
@@ -174,7 +190,8 @@ const Storage = {
 
     // === QUITTANCES ===
     getQuittances() {
-        return this.load(this.KEYS.QUITTANCES);
+        const data = this.load(this.KEYS.QUITTANCES);
+        return data.map(q => Object.assign(new Quittance(), q));
     },
 
     saveQuittances(quittances) {
@@ -189,12 +206,14 @@ const Storage = {
 
     getQuittanceById(id) {
         const quittances = this.getQuittances();
-        return quittances.find(q => q.id_quittance === id);
+        const quittance = quittances.find(q => q.id_quittance === id);
+        return quittance ? Object.assign(new Quittance(), quittance) : undefined;
     },
 
     // === PÉNALITÉS ===
     getPenalites() {
-        return this.load(this.KEYS.PENALITES);
+        const data = this.load(this.KEYS.PENALITES);
+        return data.map(p => Object.assign(new Penalite(), p));
     },
 
     savePenalites(penalites) {
@@ -209,7 +228,8 @@ const Storage = {
 
     // === CONTRÔLES ===
     getControles() {
-        return this.load(this.KEYS.CONTROLES);
+        const data = this.load(this.KEYS.CONTROLES);
+        return data.map(c => Object.assign(new ControleFinancier(), c));
     },
 
     saveControles(controles) {
@@ -224,7 +244,8 @@ const Storage = {
 
     // === TRANSACTIONS ===
     getTransactions() {
-        return this.load(this.KEYS.TRANSACTIONS);
+        const data = this.load(this.KEYS.TRANSACTIONS);
+        return data.map(t => Object.assign(new Transaction(), t));
     },
 
     saveTransactions(transactions) {
@@ -242,7 +263,9 @@ const Storage = {
         const defaultSettings = {
             tauxPenalite: 5,
             devise: 'FCFA',
-            darkMode: false
+            darkMode: false,
+            autoSave: true,
+            offlineMode: true
         };
         const settings = this.load(this.KEYS.SETTINGS);
         return settings.length > 0 ? settings[0] : defaultSettings;
@@ -250,6 +273,31 @@ const Storage = {
 
     saveSettings(settings) {
         return this.save(this.KEYS.SETTINGS, [settings]);
+    },
+
+    // === PAIEMENTS EN ATTENTE (OFFLINE) ===
+    getPendingPayments() {
+        return this.load('unipay_pending_payments') || [];
+    },
+
+    savePendingPayments(payments) {
+        return this.save('unipay_pending_payments', payments);
+    },
+
+    addPendingPayment(payment) {
+        const pending = this.getPendingPayments();
+        pending.push({
+            ...payment,
+            timestamp: new Date().toISOString(),
+            status: 'pending'
+        });
+        return this.savePendingPayments(pending);
+    },
+
+    removePendingPayment(paymentId) {
+        const pending = this.getPendingPayments();
+        const filtered = pending.filter(p => p.id_paiement !== paymentId);
+        return this.savePendingPayments(filtered);
     },
 
     // === STATISTIQUES ===

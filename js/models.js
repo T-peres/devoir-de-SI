@@ -1,0 +1,311 @@
+/**
+ * Modèles de données pour l'application de gestion des paiements universitaires
+ */
+
+// Classe Étudiant
+class Etudiant {
+    constructor(nom, prenom, dateNaissance, email, telephone) {
+        this.id_etudiant = this.generateId();
+        this.nom = nom;
+        this.prenom = prenom;
+        this.date_naissance = dateNaissance;
+        this.email = email;
+        this.telephone = telephone;
+        this.date_creation = new Date().toISOString();
+    }
+
+    generateId() {
+        return 'ETU' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+
+    getNomComplet() {
+        return `${this.nom} ${this.prenom}`;
+    }
+}
+
+// Classe Échéance
+class Echeance {
+    constructor(etudiantId, montant, dateEcheance, tauxPenalite = 5) {
+        this.id_echeance = this.generateId();
+        this.etudiant_id = etudiantId;
+        this.montant = montant;
+        this.date_echeance = dateEcheance;
+        this.taux_penalite = tauxPenalite;
+        this.penalite_applicable = false;
+        this.montant_penalite = 0;
+        this.payee = false;
+        this.date_paiement = null;
+        this.date_creation = new Date().toISOString();
+    }
+
+    generateId() {
+        return 'ECH' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Vérifie si l'échéance est en retard
+    isOverdue() {
+        if (this.payee) return false;
+        const today = new Date();
+        const echeanceDate = new Date(this.date_echeance);
+        return today > echeanceDate;
+    }
+
+    // Calcule la pénalité si en retard
+    calculerPenalite() {
+        if (this.isOverdue() && !this.payee) {
+            this.penalite_applicable = true;
+            this.montant_penalite = this.montant * (this.taux_penalite / 100);
+            return this.montant_penalite;
+        }
+        return 0;
+    }
+
+    // Marque l'échéance comme payée
+    marquerPayee() {
+        this.payee = true;
+        this.date_paiement = new Date().toISOString();
+    }
+
+    // Obtient le montant total (avec pénalité si applicable)
+    getMontantTotal() {
+        this.calculerPenalite();
+        return this.montant + this.montant_penalite;
+    }
+}
+
+// Classe Paiement
+class Paiement {
+    constructor(etudiantId, montant, modePaiement) {
+        this.id_paiement = this.generateId();
+        this.etudiant_id = etudiantId;
+        this.montant = montant;
+        this.mode_paiement = modePaiement;
+        this.date_paiement = new Date().toISOString();
+        this.statut = 'valide';
+        this.echeances = []; // IDs des échéances payées
+        this.penalites = []; // IDs des pénalités appliquées
+        this.quittance_id = null;
+        this.date_creation = new Date().toISOString();
+    }
+
+    generateId() {
+        return 'PAY' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Ajoute une échéance au paiement
+    ajouterEcheance(echeanceId) {
+        if (!this.echeances.includes(echeanceId)) {
+            this.echeances.push(echeanceId);
+        }
+    }
+
+    // Ajoute une pénalité au paiement
+    ajouterPenalite(penaliteId) {
+        if (!this.penalites.includes(penaliteId)) {
+            this.penalites.push(penaliteId);
+        }
+    }
+
+    // Change le statut du paiement
+    changerStatut(nouveauStatut) {
+        const statutsValides = ['cree', 'en_attente', 'valide', 'partiel', 'en_retard', 'archive'];
+        if (statutsValides.includes(nouveauStatut)) {
+            this.statut = nouveauStatut;
+        }
+    }
+}
+
+// Classe Quittance
+class Quittance {
+    constructor(paiementId, etudiantId, montant) {
+        this.id_quittance = this.generateId();
+        this.reference = this.generateReference();
+        this.paiement_id = paiementId;
+        this.etudiant_id = etudiantId;
+        this.montant = montant;
+        this.date_emission = new Date().toISOString();
+    }
+
+    generateId() {
+        return 'QUI' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+
+    generateReference() {
+        const date = new Date();
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const random = Math.random().toString(36).substr(2, 6).toUpperCase();
+        return `QT-${year}${month}-${random}`;
+    }
+
+    // Génère le HTML de la quittance pour impression
+    genererHTML(etudiant, echeances) {
+        const dateFormatted = new Date(this.date_emission).toLocaleDateString('fr-FR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        let echeancesHTML = '';
+        echeances.forEach(ech => {
+            const dateEch = new Date(ech.date_echeance).toLocaleDateString('fr-FR');
+            echeancesHTML += `
+                <tr>
+                    <td>${dateEch}</td>
+                    <td>${ech.montant.toLocaleString('fr-FR')} FCFA</td>
+                    <td>${ech.montant_penalite > 0 ? ech.montant_penalite.toLocaleString('fr-FR') + ' FCFA' : '-'}</td>
+                </tr>
+            `;
+        });
+
+        return `
+            <!DOCTYPE html>
+            <html lang="fr">
+            <head>
+                <meta charset="UTF-8">
+                <title>Quittance ${this.reference}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 40px; }
+                    .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+                    .info { margin: 20px 0; }
+                    .info-row { display: flex; justify-content: space-between; margin: 10px 0; }
+                    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                    th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                    th { background-color: #4f46e5; color: white; }
+                    .total { font-size: 1.2em; font-weight: bold; text-align: right; margin-top: 20px; }
+                    .footer { margin-top: 60px; text-align: center; font-size: 0.9em; color: #666; }
+                    @media print {
+                        body { padding: 20px; }
+                        button { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>💳 QUITTANCE DE PAIEMENT</h1>
+                    <p>Référence: <strong>${this.reference}</strong></p>
+                </div>
+                
+                <div class="info">
+                    <div class="info-row">
+                        <div><strong>Étudiant:</strong> ${etudiant.getNomComplet()}</div>
+                        <div><strong>Date:</strong> ${dateFormatted}</div>
+                    </div>
+                    <div class="info-row">
+                        <div><strong>Email:</strong> ${etudiant.email}</div>
+                        <div><strong>Téléphone:</strong> ${etudiant.telephone}</div>
+                    </div>
+                </div>
+
+                <h3>Détail des échéances payées</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date Échéance</th>
+                            <th>Montant</th>
+                            <th>Pénalité</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${echeancesHTML}
+                    </tbody>
+                </table>
+
+                <div class="total">
+                    MONTANT TOTAL PAYÉ: ${this.montant.toLocaleString('fr-FR')} FCFA
+                </div>
+
+                <div class="footer">
+                    <p>Cette quittance certifie le paiement des sommes mentionnées ci-dessus.</p>
+                    <p>Document généré le ${dateFormatted}</p>
+                </div>
+
+                <div style="text-align: center; margin-top: 30px;">
+                    <button onclick="window.print()" style="padding: 10px 30px; background: #4f46e5; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                        Imprimer / Télécharger PDF
+                    </button>
+                </div>
+            </body>
+            </html>
+        `;
+    }
+}
+
+// Classe Pénalité
+class Penalite {
+    constructor(type, montant, raison, etudiantId, echeanceId = null) {
+        this.id_penalite = this.generateId();
+        this.type = type; // 'retard', 'autre'
+        this.montant = montant;
+        this.raison = raison;
+        this.etudiant_id = etudiantId;
+        this.echeance_id = echeanceId;
+        this.date_application = new Date().toISOString();
+    }
+
+    generateId() {
+        return 'PEN' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+}
+
+// Classe Contrôle Financier
+class ControleFinancier {
+    constructor(typeControle) {
+        this.id_controle = this.generateId();
+        this.date_controle = new Date().toISOString();
+        this.type_controle = typeControle; // 'coherence', 'echeances', 'penalites'
+        this.resultat = 'en_cours';
+        this.anomalies = [];
+        this.details = {};
+    }
+
+    generateId() {
+        return 'CTR' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Ajoute une anomalie détectée
+    ajouterAnomalie(description, gravite = 'moyenne') {
+        this.anomalies.push({
+            description,
+            gravite, // 'faible', 'moyenne', 'elevee'
+            date: new Date().toISOString()
+        });
+    }
+
+    // Finalise le contrôle
+    finaliser() {
+        this.resultat = this.anomalies.length === 0 ? 'ok' : 'anomalies_detectees';
+        this.details.nombre_anomalies = this.anomalies.length;
+    }
+}
+
+// Classe Preuve (pour documents justificatifs)
+class Preuve {
+    constructor(typePreuve, paiementId) {
+        this.id_preuve = this.generateId();
+        this.type_preuve = typePreuve; // 'recu', 'virement', 'cheque'
+        this.paiement_id = paiementId;
+        this.document = null; // Pourrait stocker un base64 ou URL
+        this.date_emission = new Date().toISOString();
+    }
+
+    generateId() {
+        return 'PRV' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+}
+
+// Classe Transaction (pour l'historique)
+class Transaction {
+    constructor(type, description, montant, etudiantId = null) {
+        this.id_transaction = this.generateId();
+        this.type = type; // 'paiement', 'penalite', 'remboursement'
+        this.description = description;
+        this.montant = montant;
+        this.etudiant_id = etudiantId;
+        this.date = new Date().toISOString();
+    }
+
+    generateId() {
+        return 'TRX' + Date.now() + Math.random().toString(36).substr(2, 9);
+    }
+}

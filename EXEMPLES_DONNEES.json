@@ -1,0 +1,341 @@
+{
+  "description": "Exemples de structures de données utilisées dans UniPay",
+  "version": "1.0.0",
+  
+  "etudiant_exemple": {
+    "id_etudiant": "ETU1704123456789abc",
+    "nom": "Diallo",
+    "prenom": "Amadou",
+    "date_naissance": "2000-05-15",
+    "email": "amadou.diallo@univ.edu",
+    "telephone": "+221 77 123 45 67",
+    "date_creation": "2024-01-15T10:30:00.000Z"
+  },
+
+  "echeance_exemple": {
+    "id_echeance": "ECH1704123456789def",
+    "etudiant_id": "ETU1704123456789abc",
+    "montant": 200000,
+    "date_echeance": "2024-03-15",
+    "taux_penalite": 5,
+    "penalite_applicable": true,
+    "montant_penalite": 10000,
+    "payee": false,
+    "date_paiement": null,
+    "date_creation": "2024-01-15T10:35:00.000Z"
+  },
+
+  "paiement_exemple": {
+    "id_paiement": "PAY1704123456789ghi",
+    "etudiant_id": "ETU1704123456789abc",
+    "montant": 210000,
+    "mode_paiement": "virement",
+    "date_paiement": "2024-03-20T14:20:00.000Z",
+    "statut": "valide",
+    "echeances": ["ECH1704123456789def"],
+    "penalites": ["PEN1704123456789jkl"],
+    "quittance_id": "QUI1704123456789mno",
+    "date_creation": "2024-03-20T14:20:00.000Z"
+  },
+
+  "quittance_exemple": {
+    "id_quittance": "QUI1704123456789mno",
+    "reference": "QT-202403-A1B2C3",
+    "paiement_id": "PAY1704123456789ghi",
+    "etudiant_id": "ETU1704123456789abc",
+    "montant": 210000,
+    "date_emission": "2024-03-20T14:20:00.000Z"
+  },
+
+  "penalite_exemple": {
+    "id_penalite": "PEN1704123456789jkl",
+    "type": "retard",
+    "montant": 10000,
+    "raison": "Retard de paiement - Échéance du 15/03/2024",
+    "etudiant_id": "ETU1704123456789abc",
+    "echeance_id": "ECH1704123456789def",
+    "date_application": "2024-03-20T14:20:00.000Z"
+  },
+
+  "controle_exemple": {
+    "id_controle": "CTR1704123456789pqr",
+    "date_controle": "2024-03-25T09:00:00.000Z",
+    "type_controle": "coherence",
+    "resultat": "anomalies_detectees",
+    "anomalies": [
+      {
+        "description": "Échéance ECH123: En retard mais pénalité non calculée",
+        "gravite": "moyenne",
+        "date": "2024-03-25T09:00:00.000Z"
+      }
+    ],
+    "details": {
+      "nombre_anomalies": 1
+    }
+  },
+
+  "transaction_exemple": {
+    "id_transaction": "TRX1704123456789stu",
+    "type": "paiement",
+    "description": "Paiement virement - Diallo Amadou",
+    "montant": 210000,
+    "etudiant_id": "ETU1704123456789abc",
+    "date": "2024-03-20T14:20:00.000Z"
+  },
+
+  "settings_exemple": {
+    "tauxPenalite": 5,
+    "devise": "FCFA",
+    "darkMode": false
+  },
+
+  "scenarios": {
+    "scenario_1_inscription_complete": {
+      "description": "Inscription d'un nouvel étudiant avec plan de paiement",
+      "etapes": [
+        {
+          "action": "Créer étudiant",
+          "donnees": {
+            "nom": "Sow",
+            "prenom": "Fatou",
+            "date_naissance": "2001-08-22",
+            "email": "fatou.sow@univ.edu",
+            "telephone": "+221 76 234 56 78"
+          }
+        },
+        {
+          "action": "Générer échéances",
+          "donnees": {
+            "montant_total": 600000,
+            "nombre_echeances": 3,
+            "date_debut": "2024-04-01",
+            "taux_penalite": 5
+          },
+          "resultat": [
+            {
+              "echeance": 1,
+              "date": "2024-04-01",
+              "montant": 200000
+            },
+            {
+              "echeance": 2,
+              "date": "2024-05-01",
+              "montant": 200000
+            },
+            {
+              "echeance": 3,
+              "date": "2024-06-01",
+              "montant": 200000
+            }
+          ]
+        }
+      ]
+    },
+
+    "scenario_2_paiement_simple": {
+      "description": "Paiement d'une échéance sans retard",
+      "donnees_paiement": {
+        "etudiant_id": "ETU1704123456789abc",
+        "montant": 200000,
+        "mode_paiement": "especes",
+        "echeances_selectionnees": ["ECH1704123456789def"]
+      },
+      "resultat": {
+        "paiement_cree": true,
+        "statut": "valide",
+        "echeances_payees": 1,
+        "penalites_appliquees": 0,
+        "quittance_generee": true,
+        "reste_a_payer": 0
+      }
+    },
+
+    "scenario_3_paiement_avec_retard": {
+      "description": "Paiement d'une échéance en retard avec pénalité",
+      "contexte": {
+        "date_echeance": "2024-03-15",
+        "date_paiement": "2024-03-25",
+        "jours_retard": 10,
+        "montant_echeance": 200000,
+        "taux_penalite": 5
+      },
+      "calculs": {
+        "montant_penalite": 10000,
+        "montant_total": 210000
+      },
+      "donnees_paiement": {
+        "montant": 210000,
+        "mode_paiement": "virement"
+      },
+      "resultat": {
+        "paiement_cree": true,
+        "statut": "valide",
+        "penalite_appliquee": true,
+        "montant_penalite": 10000,
+        "quittance_inclut_penalite": true
+      }
+    },
+
+    "scenario_4_paiement_partiel": {
+      "description": "Paiement partiel d'une échéance",
+      "contexte": {
+        "montant_echeance": 200000,
+        "montant_disponible": 150000
+      },
+      "donnees_paiement": {
+        "montant": 150000,
+        "mode_paiement": "mobile"
+      },
+      "resultat": {
+        "paiement_cree": true,
+        "statut": "partiel",
+        "echeance_payee": false,
+        "reste_a_payer": 50000,
+        "quittance_generee": true,
+        "note": "L'échéance reste non payée jusqu'au solde complet"
+      }
+    },
+
+    "scenario_5_paiement_multiple": {
+      "description": "Paiement de plusieurs échéances en une fois",
+      "contexte": {
+        "nombre_echeances": 3,
+        "montant_par_echeance": 200000,
+        "montant_total": 600000
+      },
+      "donnees_paiement": {
+        "montant": 600000,
+        "mode_paiement": "cheque",
+        "echeances_selectionnees": [
+          "ECH1704123456789def",
+          "ECH1704123456789ghi",
+          "ECH1704123456789jkl"
+        ]
+      },
+      "resultat": {
+        "paiement_cree": true,
+        "statut": "valide",
+        "echeances_payees": 3,
+        "quittance_unique": true,
+        "reste_a_payer": 0
+      }
+    }
+  },
+
+  "formules_calcul": {
+    "penalite": {
+      "formule": "montant_echeance × (taux_penalite / 100)",
+      "exemple": {
+        "montant_echeance": 200000,
+        "taux_penalite": 5,
+        "calcul": "200000 × (5 / 100) = 10000",
+        "resultat": 10000
+      }
+    },
+    "montant_total_avec_penalite": {
+      "formule": "montant_echeance + montant_penalite",
+      "exemple": {
+        "montant_echeance": 200000,
+        "montant_penalite": 10000,
+        "calcul": "200000 + 10000 = 210000",
+        "resultat": 210000
+      }
+    },
+    "reste_a_payer": {
+      "formule": "somme_echeances_selectionnees - montant_paye",
+      "exemple": {
+        "echeance_1": 200000,
+        "echeance_2": 200000,
+        "somme": 400000,
+        "montant_paye": 350000,
+        "calcul": "400000 - 350000 = 50000",
+        "resultat": 50000
+      }
+    },
+    "montant_par_echeance": {
+      "formule": "montant_total / nombre_echeances",
+      "exemple": {
+        "montant_total": 600000,
+        "nombre_echeances": 3,
+        "calcul": "600000 / 3 = 200000",
+        "resultat": 200000
+      }
+    }
+  },
+
+  "statuts": {
+    "paiement": {
+      "cree": "Paiement créé mais non validé",
+      "en_attente": "En attente de validation",
+      "valide": "Paiement validé et enregistré",
+      "partiel": "Paiement partiel, solde restant",
+      "en_retard": "Paiement en retard",
+      "archive": "Paiement archivé"
+    },
+    "echeance": {
+      "en_attente": "Échéance non encore due",
+      "due": "Échéance à payer aujourd'hui",
+      "en_retard": "Échéance dépassée non payée",
+      "payee": "Échéance payée"
+    },
+    "controle": {
+      "en_cours": "Contrôle en cours d'exécution",
+      "ok": "Aucune anomalie détectée",
+      "anomalies_detectees": "Anomalies trouvées"
+    }
+  },
+
+  "modes_paiement": [
+    "especes",
+    "cheque",
+    "virement",
+    "mobile"
+  ],
+
+  "types_transaction": [
+    "paiement",
+    "penalite",
+    "remboursement",
+    "echeances"
+  ],
+
+  "types_controle": [
+    "coherence",
+    "echeances",
+    "penalites"
+  ],
+
+  "gravites_anomalie": [
+    "faible",
+    "moyenne",
+    "elevee"
+  ],
+
+  "notes_implementation": {
+    "localStorage_keys": {
+      "unipay_etudiants": "Liste de tous les étudiants",
+      "unipay_paiements": "Liste de tous les paiements",
+      "unipay_echeances": "Liste de toutes les échéances",
+      "unipay_quittances": "Liste de toutes les quittances",
+      "unipay_penalites": "Liste de toutes les pénalités",
+      "unipay_controles": "Liste de tous les contrôles",
+      "unipay_transactions": "Historique complet des transactions",
+      "unipay_settings": "Paramètres de l'application"
+    },
+    "relations": {
+      "etudiant_paiements": "1 étudiant → N paiements",
+      "etudiant_echeances": "1 étudiant → N échéances",
+      "paiement_echeances": "1 paiement → N échéances (relation N,M)",
+      "paiement_quittance": "1 paiement → 1 quittance",
+      "echeance_penalite": "1 échéance → 0..1 pénalité",
+      "paiement_penalites": "1 paiement → N pénalités"
+    },
+    "validations": {
+      "email": "Format standard RFC 5322",
+      "telephone": "Minimum 8 caractères, chiffres et symboles +()-",
+      "montant": "Nombre positif, pas de limite max",
+      "date": "Format ISO 8601 (YYYY-MM-DD)",
+      "taux_penalite": "Entre 0 et 100%"
+    }
+  }
+}
